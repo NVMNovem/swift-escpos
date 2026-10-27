@@ -3,22 +3,12 @@
 
 import PackageDescription
 
-/// SwiftNIO, needed only by `SwiftESCPOSNetwork` and only with the `Network` trait. Without the
-/// trait, swift-nio is neither fetched nor resolved.
-let nio: [Target.Dependency] = ["NIOCore", "NIOPosix", "NIOConcurrencyHelpers"].map {
-    .product(name: $0, package: "swift-nio", condition: .when(traits: ["Network"]))
-}
-
 let package = Package(
     name: "swift-escpos",
     platforms: [.iOS(.v17), .macOS(.v14), .tvOS(.v17), .watchOS(.v10), .visionOS(.v1)],
     products: [
         .library(name: "SwiftESCPOS", targets: ["SwiftESCPOS"]),
-        // Empty unless the `Network` trait is enabled: SwiftPM cannot make a product conditional.
         .library(name: "SwiftESCPOSNetwork", targets: ["SwiftESCPOSNetwork"]),
-    ],
-    traits: [
-        .trait(name: "Network", description: "TCP printing and status queries over SwiftNIO, in SwiftESCPOSNetwork."),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
@@ -29,7 +19,12 @@ let package = Package(
         // TCP transport and status queries, on SwiftNIO.
         .target(
             name: "SwiftESCPOSNetwork",
-            dependencies: ["SwiftESCPOS"] + nio
+            dependencies: [
+                "SwiftESCPOS",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+            ]
         ),
         .testTarget(
             name: "SwiftESCPOSTests",
@@ -37,7 +32,13 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftESCPOSNetworkTests",
-            dependencies: ["SwiftESCPOS", "SwiftESCPOSNetwork"] + nio
+            dependencies: [
+                "SwiftESCPOS",
+                "SwiftESCPOSNetwork",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+            ]
         ),
     ],
     swiftLanguageModes: [.v6]
