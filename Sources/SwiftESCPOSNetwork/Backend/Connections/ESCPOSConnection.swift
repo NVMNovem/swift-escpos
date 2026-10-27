@@ -5,9 +5,11 @@
 //  Created by Damian Van de Kauter on 25/10/2026.
 //
 
+#if Network
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
+import SwiftESCPOS
 
 #if canImport(Darwin)
 import Darwin
@@ -75,8 +77,9 @@ public struct ESCPOSConnection: Sendable, Hashable {
         let progress = Progress()
         do {
             try Task.checkCancellation()
-            let channel = try await connect()
+            let channel = try await connect(progress: progress)
             defer { channel.close(promise: nil) }
+            try Task.checkCancellation()
             try await withTaskCancellationHandler {
                 progress.phase = .writing
                 var offset = 0
@@ -90,6 +93,7 @@ public struct ESCPOSConnection: Sendable, Hashable {
                 }
                 try await channel.close()
             } onCancel: {
+                progress.wasCancelled = true
                 channel.close(promise: nil)
             }
             return ESCPOSTransmission(bytesSent: bytes.count, duration: clock.now - start)
@@ -111,8 +115,9 @@ public struct ESCPOSConnection: Sendable, Hashable {
         let progress = Progress(countsDelivery: false)
         do {
             try Task.checkCancellation()
-            let channel = try await connect()
+            let channel = try await connect(progress: progress)
             defer { channel.close(promise: nil) }
+            try Task.checkCancellation()
             return try await withTaskCancellationHandler {
                 let answers = channel.eventLoop.makePromise(of: [UInt8].self)
                 try await channel.eventLoop.submit {
@@ -132,6 +137,7 @@ public struct ESCPOSConnection: Sendable, Hashable {
                 let bytes = try await answers.futureResult.get()
                 return try ESCPOSPrinterStatus(answers: bytes, for: requests)
             } onCancel: {
+                progress.wasCancelled = true
                 channel.close(promise: nil)
             }
         } catch {
@@ -141,14 +147,31 @@ public struct ESCPOSConnection: Sendable, Hashable {
 
     // MARK: - Channel
 
-    private func connect() async throws -> Channel {
-        switch endpoint {
-        case .tcp(let host, let port):
-            try await ClientBootstrap(group: MultiThreadedEventLoopGroup.singleton)
-                .connectTimeout(TimeAmount(timeouts.connect))
-                .channelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
-                .connect(host: host, port: port)
-                .get()
+    /// Connects, giving up as soon as the task is cancelled rather than when the connect timeout
+    /// runs out.
+    private func connect(progress: Progress) async throws -> Channel {
+        // The channel being connected, so cancellation can close it. Whichever of the initializer
+        // and the cancellation handler runs second sees what the first one left.
+        let attempt = NIOLockedValueBox<Channel?>(nil)
+        return try await withTaskCancellationHandler {
+            switch endpoint {
+            case .tcp(let host, let port):
+                try await ClientBootstrap(group: MultiThreadedEventLoopGroup.singleton)
+                    .connectTimeout(TimeAmount(timeouts.connect))
+                    .channelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
+                    .channelInitializer { channel in
+                        attempt.withLockedValue { $0 = channel }
+                        guard !progress.wasCancelled else {
+                            return channel.eventLoop.makeFailedFuture(CancellationError())
+                        }
+                        return channel.eventLoop.makeSucceededVoidFuture()
+                    }
+                    .connect(host: host, port: port)
+                    .get()
+            }
+        } onCancel: {
+            progress.wasCancelled = true
+            attempt.withLockedValue { $0 }?.close(promise: nil)
         }
     }
 
@@ -172,6 +195,9 @@ extension ESCPOSConnection {
             var hasStartedWriting = false
             var confirmedBytes = 0
             var hasTimedOut = false
+            /// Set by a cancellation handler, which closes the channel: the step then fails with a
+            /// closed-channel error, not a `CancellationError`, and must still count as cancelled.
+            var wasCancelled = false
         }
 
         private let state = NIOLockedValueBox(State())
@@ -201,6 +227,11 @@ extension ESCPOSConnection {
             set { state.withLockedValue { $0.hasTimedOut = newValue } }
         }
 
+        var wasCancelled: Bool {
+            get { state.withLockedValue(\.wasCancelled) }
+            set { state.withLockedValue { $0.wasCancelled = newValue } }
+        }
+
         /// Turns whatever was thrown into an ``ESCPOSConnectionError`` that is honest about delivery.
         ///
         /// Once a write has been issued, a failure is never ``ESCPOSConnectionError/Delivery/notSent``:
@@ -218,7 +249,7 @@ extension ESCPOSConnection {
             if let error = error as? ESCPOSStatusError {
                 return .malformedStatus(error)
             }
-            if error is CancellationError {
+            if error is CancellationError || state.wasCancelled {
                 return .cancelled(state.phase)
             }
             if state.hasTimedOut {
@@ -245,3 +276,4 @@ extension ESCPOSConnection {
         }
     }
 }
+#endif
