@@ -5,7 +5,6 @@
 //  Created by Damian Van de Kauter on 25/10/2026.
 //
 
-#if Network
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
@@ -151,4 +150,3 @@ final class VirtualPrinter: Sendable {
         }
     }
 }
-#endif

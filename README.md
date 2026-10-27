@@ -8,13 +8,9 @@ A type-safe Swift library for ESC/POS receipt printers. You describe a job as an
 
 - Swift 6.2 tools or later, Swift 6 language mode (strict concurrency).
 - iOS 17, macOS 14, tvOS 17, watchOS 10, visionOS 1, and Linux.
-- `SwiftESCPOS` has no dependencies. `SwiftESCPOSNetwork` uses SwiftNIO, and only with the `Network` trait.
+- `SwiftESCPOS` has no dependencies. `SwiftESCPOSNetwork` uses SwiftNIO.
 
 ## Installation
-
-The package has two modules. Encoding is always available; TCP printing is behind the `Network` package trait, which is off by default.
-
-**Encoding only** — SwiftNIO is neither fetched nor built:
 
 ```swift
 dependencies: [
@@ -22,21 +18,8 @@ dependencies: [
 ],
 targets: [
     .target(name: "App", dependencies: [
-        .product(name: "SwiftESCPOS", package: "swift-escpos"),
-    ]),
-]
-```
-
-**Encoding and TCP printing** — enable the trait and add the second product:
-
-```swift
-dependencies: [
-    .package(url: "https://github.com/NVMNovem/swift-escpos.git", from: "0.1.0", traits: ["Network"]),
-],
-targets: [
-    .target(name: "App", dependencies: [
-        .product(name: "SwiftESCPOS", package: "swift-escpos"),
-        .product(name: "SwiftESCPOSNetwork", package: "swift-escpos"),
+        .product(name: "SwiftESCPOS", package: "swift-escpos"),         // encoding
+        .product(name: "SwiftESCPOSNetwork", package: "swift-escpos"),  // optional: TCP printing and status
     ]),
 ]
 ```
@@ -44,20 +27,11 @@ targets: [
 | Module | Import when you | Contains | Dependencies |
 |---|---|---|---|
 | `SwiftESCPOS` | build print jobs or parse status bytes | Commands, encoder, profiles, capabilities, code pages, raster images, QR codes, `ESCPOSPrinterStatus` | none |
-| `SwiftESCPOSNetwork` | send jobs or query status over TCP | `ESCPOSConnection`, `ESCPOSTransmission`, `ESCPOSConnectionError` | SwiftNIO (`Network` trait) |
+| `SwiftESCPOSNetwork` | send jobs or query status over TCP | `ESCPOSConnection`, `ESCPOSTransmission`, `ESCPOSConnectionError` | SwiftNIO |
 
-> [!NOTE]
-> SwiftPM cannot make a product conditional, so `SwiftESCPOSNetwork` can always be added as a dependency. Without the `Network` trait it is an empty module: `import SwiftESCPOSNetwork` compiles, but `ESCPOSConnection` is not found.
+A target that depends only on `SwiftESCPOS` does not build or link SwiftNIO. SwiftPM still resolves swift-nio for every client of the package, because it is declared at package level.
 
 Version numbers above are illustrative; use the release you need.
-
-### Traits and other packages
-
-Traits are unified across the dependency graph: if any package enables `Network`, every package that depends on `swift-escpos` sees it on. A library that needs TCP printing should enable the trait itself rather than rely on the application to do it.
-
-With the Swift 6.4 toolchain this package was tested on, one combination fails to resolve: the application declares `swift-escpos` **without** the trait while another of its dependencies declares it **with** the trait. SwiftPM then reports `swift-nio` as unresolved. Declaring the trait in the application's dependency on `swift-escpos` as well resolves it.
-
-From the command line, pass `--traits Network` to `swift build` and `swift test` in this repository to build and test the network module.
 
 ## Encoding
 
@@ -88,8 +62,6 @@ The encoder is deterministic and strict: the same commands and profile always gi
 - **Escape hatch.** `.raw([UInt8])` sends bytes unchecked.
 
 ## TCP printing
-
-Requires the `Network` trait.
 
 ```swift
 import SwiftESCPOS
@@ -134,9 +106,8 @@ Every field is optional: `nil` means the printer was not asked or did not say. A
 
 Earlier versions had a single `SwiftESCPOS` module that always depended on SwiftNIO. Encoding code needs no change. Code that sends or queries printers does:
 
-1. Add `traits: ["Network"]` to the `swift-escpos` package dependency.
-2. Add the `SwiftESCPOSNetwork` product to the target.
-3. Add `import SwiftESCPOSNetwork` next to `import SwiftESCPOS`.
+1. Add the `SwiftESCPOSNetwork` product to the target.
+2. Add `import SwiftESCPOSNetwork` next to `import SwiftESCPOS`.
 
 `ESCPOSConnection`, `ESCPOSTransmission` and `ESCPOSConnectionError` keep their names and API; only their module changed. There is no re-export or alias for the old location: keeping one would have meant keeping SwiftNIO in the core module.
 

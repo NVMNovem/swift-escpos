@@ -26,39 +26,11 @@ The split exists because most of the package's value does not need a network sta
 
 Status follows the same line. Which bytes ask for status (`ESCPOSStatusRequest.bytes`) and what the answers mean (`ESCPOSPrinterStatus(answers:for:)`) are protocol facts and live in the core. Collecting answers from a socket, with a deadline, is transport and lives in the network module. Another transport can reuse the parsing unchanged.
 
-## The `Network` trait
+## SwiftNIO
 
-SwiftNIO is optional through a [package trait](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0450-swiftpm-package-traits.md) named `Network`, off by default.
+SwiftNIO is a regular package dependency, used by `SwiftESCPOSNetwork` and its tests only. A target that depends on `SwiftESCPOS` alone neither builds nor links it. SwiftPM still resolves swift-nio for every client, because package-level dependencies are resolved as a whole. swift-zpl works the same way.
 
-```swift
-traits: [.trait(name: "Network", description: "…")],
-targets: [
-    .target(name: "SwiftESCPOS"),
-    .target(name: "SwiftESCPOSNetwork", dependencies: [
-        "SwiftESCPOS",
-        .product(name: "NIOCore", package: "swift-nio", condition: .when(traits: ["Network"])),
-        …
-    ]),
-]
-```
-
-Every source file in `SwiftESCPOSNetwork` and its tests is wrapped in `#if Network`. What this gives, as verified with the Swift 6.4 toolchain (tools version 6.2 manifest):
-
-| Question | Behaviour |
-|---|---|
-| Can a trait enable a target or product? | No. Products and targets are unconditional. Only target *dependencies* take a trait condition. |
-| Is swift-nio resolved without the trait? | **No.** A dependency used only under a disabled trait is neither fetched nor resolved, for this package as root and for packages that depend on it. A clean core-only build has an empty `.build/checkouts`. |
-| What does `import SwiftESCPOSNetwork` do without the trait? | It compiles. The module exists but is empty, so `ESCPOSConnection` is "not found in scope". |
-| How do traits combine across packages? | They are unified: a trait enabled by any package in the graph is on for everyone. A library that needs the network module should enable the trait itself. |
-| Known resolver problem | If the root package declares `swift-escpos` without the trait and another dependency declares it with the trait, resolution fails with swift-nio unresolved. Declaring the trait in the root too works around it. |
-
-The module is gated as a whole, including `ESCPOSTransmission` and `ESCPOSConnectionError`, which need no NIO. That keeps the rule simple: without the trait the network module is empty.
-
-The trait is off by default because the package has not been released yet. No existing consumer loses functionality silently: one that used `ESCPOSConnection` must change its imports anyway, and enabling the trait is part of the same change.
-
-A `#error` for a missing trait is not used. Building this package as root without the trait compiles every target, so it would break plain `swift build`.
-
-`swift build` and `swift test` build and test the core. `--traits Network` adds the network module and its tests.
+A `Network` package trait was tried and removed. A trait can keep swift-nio out of resolution, but it cannot make a product or target conditional. `SwiftESCPOSNetwork` then had to exist as an empty module without the trait, every network file needed `#if Network`, and consumers had to configure the trait in addition to adding the product. One combination failed to resolve on the Swift 6.4 toolchain: an application that declared the package without the trait, next to a dependency that declared it with the trait. Separate modules already give the separation that matters, so the trait was not worth that complexity.
 
 ## Comparison with swift-zpl
 
@@ -68,7 +40,7 @@ A `#error` for a missing trait is not used. Building this package as root withou
 |---|---|---|
 | Core module | `SwiftESCPOS`, no dependencies | `SwiftZPL`, no dependencies |
 | Network module | `SwiftESCPOSNetwork` | `SwiftZPLNetwork` |
-| SwiftNIO | Only with the `Network` trait | Always resolved; no trait (yet) |
+| SwiftNIO | Resolved for every client; built only for the network module | Same |
 | Connection model | One connection per call, `Delivery.notSent / .partiallySent` | Same |
 | Cancellation | `wasCancelled` flag, cancellable connect | `wasCancelled` flag; connect waits for its timeout |
 | Test targets | `SwiftESCPOSTests`, `SwiftESCPOSNetworkTests` (virtual printer) | `SwiftZPLTests`, `SwiftZPLNetworkTests` (virtual printer) |

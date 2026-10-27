@@ -5,7 +5,6 @@
 //  Created by Damian Van de Kauter on 25/10/2026.
 //
 
-#if Network
 @testable import SwiftESCPOS
 import Testing
 @testable import SwiftESCPOSNetwork
@@ -241,4 +240,3 @@ struct ESCPOSConnectionTests {
         }
     }
 }
-#endif

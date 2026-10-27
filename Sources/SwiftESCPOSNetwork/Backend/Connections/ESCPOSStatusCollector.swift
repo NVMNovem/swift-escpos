@@ -5,7 +5,6 @@
 //  Created by Damian Van de Kauter on 25/10/2026.
 //
 
-#if Network
 import NIOCore
 
 /// Collects the one-byte answers to `DLE EOT` requests on a channel.
@@ -49,4 +48,3 @@ final class ESCPOSStatusCollector: ChannelInboundHandler {
         promise.completeWith(result)
     }
 }
-#endif
