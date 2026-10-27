@@ -5,6 +5,7 @@
 //  Created by Damian Van de Kauter on 25/10/2026.
 //
 
+#if Network
 /// A job that was handed over completely.
 ///
 /// Every byte was accepted by the operating system and the connection closed cleanly. That is
@@ -14,3 +15,4 @@ public struct ESCPOSTransmission: Sendable, Hashable {
     public let bytesSent: Int
     public let duration: Duration
 }
+#endif

@@ -5,6 +5,7 @@
 //  Created by Damian Van de Kauter on 25/10/2026.
 //
 
+#if Network
 import NIOCore
 
 extension TimeAmount {
@@ -13,3 +14,4 @@ extension TimeAmount {
         self = .nanoseconds(seconds * 1_000_000_000 + attoseconds / 1_000_000_000)
     }
 }
+#endif

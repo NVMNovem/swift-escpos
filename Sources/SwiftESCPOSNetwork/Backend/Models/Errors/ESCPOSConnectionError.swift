@@ -5,6 +5,9 @@
 //  Created by Damian Van de Kauter on 25/10/2026.
 //
 
+#if Network
+import SwiftESCPOS
+
 /// Why talking to a printer failed, and — the part a caller must act on — whether any of the job
 /// may have reached it.
 public struct ESCPOSConnectionError: Error, Sendable, Hashable {
@@ -45,3 +48,4 @@ public struct ESCPOSConnectionError: Error, Sendable, Hashable {
         self.reason = reason
     }
 }
+#endif
