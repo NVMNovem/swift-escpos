@@ -157,7 +157,10 @@ public struct ESCPOSConnection: Sendable, Hashable {
             case .tcp(let host, let port):
                 try await ClientBootstrap(group: MultiThreadedEventLoopGroup.singleton)
                     .connectTimeout(TimeAmount(timeouts.connect))
-                    .channelOption(ChannelOptions.socketOption(.tcp_nodelay), value: 1)
+                    // `tcpOption`, never `socketOption`: the latter sets option 1 at `SOL_SOCKET`,
+                    // which on Linux is `SO_DEBUG` — refused without `CAP_NET_ADMIN`, so every
+                    // connection failed with EACCES on the Pi while macOS let it through.
+                    .channelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
                     .channelInitializer { channel in
                         attempt.withLockedValue { $0 = channel }
                         guard !progress.wasCancelled else {
